@@ -230,6 +230,27 @@ Provide a PyPI API token either via `-PyPIToken <token>` or via the environment 
 
 ---
 
+## 🏷️ Release tags & build artifacts
+
+This repo includes a GitHub Actions workflow that **builds and stores release artifacts whenever you push a `v*` tag** (e.g. `v1.0.0`). The workflow produces the same `dist/` wheel + sdist files as `scripts/build.ps1` and attaches them to a GitHub Release.
+
+### 1) Create a tag
+
+```powershell
+git tag -a v1.0.0 -m "Release v1.0.0"
+git push origin v1.0.0
+```
+
+### 2) What happens next
+
+- GitHub Actions runs `release-build.yml` (triggered by `refs/tags/v*`).
+- The build output is uploaded as a workflow artifact and attached to a Release.
+- You can download the artifacts from the workflow run or from the GitHub Release page.
+
+> If you want to run builds on every `main` commit instead, update `.github/workflows/release-build.yml` to trigger on `push: branches: [main]`.
+
+---
+
 3. Click **Analyze with MCP Intel** — the LangGraph workflow runs and the report appears below.
 
 ## 📁 Example Input & Output
