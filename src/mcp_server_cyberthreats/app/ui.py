@@ -22,8 +22,8 @@ from PIL import Image
 # ---------------------------------------------------------------------------
 # Local imports
 # ---------------------------------------------------------------------------
-from cyberthreats.utils import AuditContext, AuditState
-from cyberthreats.utils.vision_providers import VisionAnalyzerBase, create_vision_analyzer
+from mcp_server_cyberthreats.utils import AuditContext, AuditState
+from mcp_server_cyberthreats.utils.vision_providers import VisionAnalyzerBase, create_vision_analyzer
 
 # ---------------------------------------------------------------------------
 # Environment setup
@@ -207,7 +207,7 @@ def main() -> None:
 
     Run directly with::
 
-        streamlit run src/cyberthreats/app/ui.py
+        streamlit run src/mcp_server_cyberthreats/app/ui.py
     """
     st.set_page_config(page_title="CyberThreats — Security Reviewer", layout="wide")
     st.title("🛡️ CyberThreats — Architecture Security Reviewer (MCP Powered)")
@@ -250,7 +250,7 @@ def main() -> None:
                     result = graph.invoke(
                         {"image": image, "audit_prompt": audit_prompt},
                         config={
-                            "tags": ["cyberthreats", "security-audit", "langgraph"],
+                            "tags": ["mcp-server-cyberthreats", "security-audit", "langgraph"],
                             "metadata": {"workflow": "architecture_audit"},
                         },
                         version="v2",

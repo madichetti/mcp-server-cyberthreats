@@ -3,7 +3,7 @@
 Re-exports the public API so callers use the same import path regardless
 of the internal file layout::
 
-    from cyberthreats.utils.vision_providers import VisionAnalyzerBase, create_vision_analyzer
+    from mcp_server_cyberthreats.utils.vision_providers import VisionAnalyzerBase, create_vision_analyzer
 
 Sub-modules:
     base               — ``VisionAnalyzerBase`` abstract class and shared helpers

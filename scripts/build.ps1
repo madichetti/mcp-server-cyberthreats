@@ -1,7 +1,7 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-    Build the mcp-server-cyberthreats package (sdist + wheel).
+    Build the cyberthreats package (sdist + wheel).
 
 .DESCRIPTION
     Cleans previous build artefacts, runs `uv build`, and validates the
@@ -14,7 +14,9 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-$projectRoot = $PSScriptRoot
+# When this script is run from scripts/, the project root is one level up.
+$scriptRoot = $PSScriptRoot
+$projectRoot = Split-Path -Parent $scriptRoot
 
 Write-Host "==> Cleaning previous build artefacts..." -ForegroundColor Cyan
 foreach ($dir in @("dist", "build")) {
@@ -27,15 +29,26 @@ foreach ($dir in @("dist", "build")) {
 
 Write-Host ""
 Write-Host "==> Building sdist + wheel..." -ForegroundColor Cyan
-uv build
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "BUILD FAILED" -ForegroundColor Red
-    exit $LASTEXITCODE
+Push-Location $projectRoot
+try {
+    uv build
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "BUILD FAILED" -ForegroundColor Red
+        exit $LASTEXITCODE
+    }
+}
+finally {
+    Pop-Location
 }
 
 Write-Host ""
 Write-Host "==> Validating dist artefacts with twine check..." -ForegroundColor Cyan
-uv tool run twine check (Join-Path $projectRoot "dist" "*")
+$distFiles = Get-ChildItem -Path (Join-Path $projectRoot "dist" "*") -Include *.whl, *.tar.gz -File | Select-Object -ExpandProperty FullName
+if (-not $distFiles) {
+    Write-Host "No distribution artefacts found in dist/ to validate." -ForegroundColor Red
+    exit 1
+}
+uv tool run twine check $distFiles
 if ($LASTEXITCODE -ne 0) {
     Write-Host "TWINE CHECK FAILED" -ForegroundColor Red
     exit $LASTEXITCODE

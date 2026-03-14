@@ -5,7 +5,7 @@
   <a href="https://github.com/madichetti/mcp-server-cyberthreats/actions"><img src="https://img.shields.io/github/actions/workflow/status/madichetti/mcp-server-cyberthreats/ci.yml?branch=main" alt="Build Status"/></a>
 </p>
 
-# 🛡️ CyberThreats — AI Cloud Architecture Security Auditor
+# 🛡️ MCP Server CyberThreats — AI Cloud Architecture Security Auditor
 
 > AI-powered cloud architecture security auditor backed by live CISA threat intelligence.
 
@@ -102,7 +102,7 @@ Security report in Streamlit UI
 
 ```bash
 git clone https://github.com/madichetti/mcp-server-cyberthreats
-cd cyberthreats
+cd mcp-server-cyberthreats
 uv sync
 ```
 
@@ -189,7 +189,7 @@ GOOGLE_MODEL=gemini-2.0-flash   # optional
 ### Run
 
 ```bash
-uv run streamlit run src/cyberthreats/app/ui.py
+uv run streamlit run src/mcp_server_cyberthreats/app/ui.py
 ```
 
 Open [http://localhost:8501](http://localhost:8501) in your browser.
@@ -198,9 +198,45 @@ Open [http://localhost:8501](http://localhost:8501) in your browser.
 
 1. The **sidebar** shows live CISA KEV threat intel. Click **Refresh Threat Intel** to reload.
 2. **Upload** a PNG or JPG cloud architecture diagram.
+
+---
+
+## 🏗️ Build & Publish (PowerShell)
+
+The repo includes two convenience scripts in `scripts/`:
+
+### Build (create dist/ artifacts)
+
+```powershell
+.
+\scripts\build.ps1
+```
+
+This cleans previous build artefacts, runs `uv build` to produce an sdist + wheel, and validates the output with `twine check`.
+
+### Publish (PyPI / TestPyPI)
+
+Provide a PyPI API token either via `-PyPIToken <token>` or via the environment variables `UV_PUBLISH_TOKEN` / `TWINE_PASSWORD`.
+
+```powershell
+# Publish to PyPI
+.
+\scripts\publish.ps1 -PyPIToken <token>
+
+# Publish to TestPyPI
+.
+\scripts\publish.ps1 -TestPyPI -PyPIToken <token>
+```
+
+---
+
 3. Click **Analyze with MCP Intel** — the LangGraph workflow runs and the report appears below.
 
-> A sample diagram and report are in [`examples/`](examples/).
+## 📁 Example Input & Output
+
+A sample diagram and the generated security report are included in the `examples/` folder:
+
+![Sample architecture diagram](examples/azure1.png)
 
 ---
 
@@ -236,14 +272,14 @@ Config file location:
 - **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
 - **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
 
-Replace `/path/to/cyberthreats` with the absolute path to the repo root (e.g. `C:\Users\you\cyberthreats` on Windows).
+Replace `/path/to/mcp-server-cyberthreats` with the absolute path to the repo root (e.g. `C:\Users\you\mcp-server-cyberthreats` on Windows).
 
 ```json
 {
   "mcpServers": {
-    "cyberthreats": {
+    "mcp-server-cyberthreats": {
       "command": "uv",
-      "args": ["run", "--project", "/path/to/cyberthreats", "python", "-m", "cyberthreats.mcp.server"],
+      "args": ["run", "--project", "/path/to/mcp-server-cyberthreats", "python", "-m", "mcp_server_cyberthreats.mcp.server"],
       "env": {
         "CISA_THREAT_LIMIT": "8"
       }
@@ -263,10 +299,10 @@ Create `.vscode/mcp.json` in the repo root.
 ```json
 {
   "servers": {
-    "cyberthreats": {
+    "mcp-server-cyberthreats": {
       "type": "stdio",
       "command": "uv",
-      "args": ["run", "--project", "${workspaceFolder}", "python", "-m", "cyberthreats.mcp.server"],
+      "args": ["run", "--project", "${workspaceFolder}", "python", "-m", "mcp_server_cyberthreats.mcp.server"],
       "env": {
         "CISA_THREAT_LIMIT": "8"
       }
@@ -277,7 +313,7 @@ Create `.vscode/mcp.json` in the repo root.
 
 > Copilot supplies its own LLM context — no provider keys are needed here. The server registers its tools (`get_live_cisa_threats`, `get_cisa_feed_metadata`) and Copilot calls them on demand.
 
-Open **Copilot Chat → Agent mode** and the `cyberthreats` server appears in the tools list.
+Open **Copilot Chat → Agent mode** and the `mcp-server-cyberthreats` server appears in the tools list.
 
 ---
 
@@ -336,8 +372,8 @@ A deeper view of every function and class involved:
 ## 📁 Project Structure
 
 ```
-cyberthreats/
-├── src/cyberthreats/
+mcp-server-cyberthreats/
+├── src/mcp_server_cyberthreats/
 │   ├── app/
 │   │   └── ui.py                  # Streamlit app + LangGraph workflow
 │   ├── mcp/

@@ -4,7 +4,7 @@ from typing import Any, TypedDict
 
 from PIL import Image
 
-from cyberthreats.utils.vision_providers import VisionAnalyzerBase
+from mcp_server_cyberthreats.utils.vision_providers import VisionAnalyzerBase
 
 
 @dataclass
