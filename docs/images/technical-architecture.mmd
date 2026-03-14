@@ -1,0 +1,79 @@
+%%{init: {"theme": "base"}}%%
+graph TB
+    classDef entry    fill:#0f172a,stroke:#334155,color:#f8fafc,stroke-width:1.5px
+    classDef ui       fill:#1d4ed8,stroke:#1e40af,color:#eff6ff,stroke-width:1.5px
+    classDef orch     fill:#4f46e5,stroke:#4338ca,color:#eef2ff,stroke-width:1.5px
+    classDef mcpload  fill:#0369a1,stroke:#075985,color:#f0f9ff,stroke-width:1.5px
+    classDef provider fill:#a855f7,stroke:#9333ea,color:#faf5ff,stroke-width:1.5px
+    classDef server   fill:#059669,stroke:#047857,color:#ecfdf5,stroke-width:1.5px
+    classDef primitive fill:#0d9488,stroke:#0f766e,color:#f0fdfa,stroke-width:1.5px
+    classDef external fill:#b45309,stroke:#92400e,color:#fffbeb,stroke-width:1.5px
+    classDef llmapi   fill:#dc2626,stroke:#b91c1c,color:#fef2f2,stroke-width:1.5px
+    classDef optional fill:#713f12,stroke:#92400e,color:#fef9c3,stroke-width:1.5px,stroke-dasharray:4 2
+
+    ENTRY["streamlit run\napp/ui.py"] --> Main
+
+    subgraph app["src/cyberthreats/app/ui.py"]
+        Main["main()\nStreamlit UI"]
+        GetRes["_get_resources\ncache_resource"]
+
+        subgraph langgraph["LangGraph Workflow"]
+            N1["prepare_context"]
+            N2["analyze_architecture"]
+            N1 --> N2
+        end
+
+        subgraph mcploader["MCP Context Loader"]
+            LoadCtx["_load_mcp_context\ncache_data"]
+            FetchSync["fetch_mcp_context\nasyncio.run"]
+            FetchAsync["fetch_context_async\n@traceable"]
+            MCPCli["MCPClient\nfastmcp.Client"]
+            LoadCtx --> FetchSync --> FetchAsync --> MCPCli
+        end
+
+        subgraph providers["vision_providers"]
+            OAI["OpenAI\nVisionAnalyzer"]
+            AZ["AzureOpenAI\nVisionAnalyzer"]
+            ANT["Anthropic\nVisionAnalyzer"]
+            GGL["Google\nVisionAnalyzer"]
+        end
+
+        Main --> LoadCtx
+        Main --> GetRes
+        GetRes --> langgraph
+        GetRes --> providers
+        N2 --> providers
+    end
+
+    subgraph mcp["src/cyberthreats/mcp/server.py"]
+        RunSrv["run_mcp_server\ncreate_mcp_server"]
+        SVC["CisaKevThreat\nIntelService"]
+        T1["get_live_cisa\n_threats"]
+        T2["get_cisa_feed\n_metadata"]
+        R1["cloud-keywords\nresource"]
+        R2["feed-info\nresource"]
+        P1["audit_prompt\nprompt"]
+        RunSrv --> SVC
+        RunSrv -.-> T1 & T2 & R1 & R2 & P1
+    end
+
+    MCPCli -->|stdio subprocess| RunSrv
+    SVC -->|HTTP GET| CISA[("CISA KEV\nJSON Feed")]
+
+    OAI -->|API| OpenAIAPI["OpenAI API"]
+    AZ  -->|API| AzureAPI["Azure OpenAI API"]
+    ANT -->|API| AnthropicAPI["Anthropic API"]
+    GGL -->|API| GoogleAPI["Google AI API"]
+
+    FetchAsync -. traceable .-> LS[/"LangSmith\noptional"/]
+
+    class ENTRY entry
+    class Main,LoadCtx,GetRes ui
+    class FetchSync,FetchAsync,MCPCli mcpload
+    class N1,N2 orch
+    class OAI,AZ,ANT,GGL provider
+    class RunSrv,SVC server
+    class T1,T2,R1,R2,P1 primitive
+    class CISA external
+    class OpenAIAPI,AzureAPI,AnthropicAPI,GoogleAPI llmapi
+    class LS optional

@@ -1,0 +1,56 @@
+---
+config:
+  theme: base
+  flowchart:
+    rankSpacing: 60
+    nodeSpacing: 40
+---
+flowchart LR
+ subgraph app["app/ui.py"]
+        UI["main()\nStreamlit UI"]
+        Cache["_load_mcp_context\ncache_data"]
+        Res["_get_resources\ncache_resource"]
+        Graph["build_audit_graph\nLangGraph"]
+        N1["prepare_context"]
+        N2["analyze_architecture"]
+        OAI["OpenAI"]
+        AZ["Azure OpenAI"]
+        ANT["Anthropic"]
+        GGL["Google Gemini"]
+  end
+ subgraph mcp["mcp/server.py"]
+        SRV["FastMCP\nCloudThreatIntel"]
+        SVC["CisaKevThreat\nIntelService"]
+  end
+    SRV --> SVC
+    U(["👤 Security\nEngineer"]) -- upload + analyze --> UI
+    UI --> Cache & Res
+    Cache -->|MCPClient stdio| SRV
+    Res --> Graph --> N1 --> N2
+    N2 --> OAI & AZ & ANT & GGL
+    SVC --> CISA[("CISA\nKEV API")]
+    Cache -. traceable .-> LS{{"LangSmith\noptional"}}
+    Graph -. traces .-> LS
+
+     UI:::ui
+     Cache:::ui
+     Res:::ui
+     Graph:::orch
+     N1:::orch
+     N2:::orch
+     OAI:::provider
+     AZ:::provider
+     ANT:::provider
+     GGL:::provider
+     SRV:::server
+     SVC:::server
+     U:::actor
+     CISA:::external
+     LS:::optional
+    classDef actor    fill:#0f172a,stroke:#334155,color:#f8fafc,stroke-width:1.5px
+    classDef ui       fill:#1d4ed8,stroke:#1e40af,color:#eff6ff,stroke-width:1.5px
+    classDef orch     fill:#4f46e5,stroke:#4338ca,color:#eef2ff,stroke-width:1.5px
+    classDef provider fill:#a855f7,stroke:#9333ea,color:#faf5ff,stroke-width:1.5px
+    classDef server   fill:#059669,stroke:#047857,color:#ecfdf5,stroke-width:1.5px
+    classDef external fill:#b45309,stroke:#92400e,color:#fffbeb,stroke-width:1.5px
+    classDef optional fill:#713f12,stroke:#92400e,color:#fef9c3,stroke-width:1.5px,stroke-dasharray:4 2

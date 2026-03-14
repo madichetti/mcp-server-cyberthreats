@@ -1,0 +1,33 @@
+sequenceDiagram
+    actor U as 👤 Security Engineer
+    participant UI as main()
+    participant Cache as _load_mcp_context
+    participant SRV as FastMCP Server
+    participant CISA as CISA KEV API
+    participant Graph as LangGraph
+    participant LLM as Vision LLM
+
+    U->>UI: Open application
+    UI->>Cache: _load_mcp_context()
+    Note over Cache: st.cache_data TTL=900s
+    Cache->>SRV: MCPClient stdio
+    Note over SRV: create_mcp_server run stdio
+    SRV->>CISA: GET vulnerabilities.json
+    CISA-->>SRV: KEV JSON feed
+    Note over SRV: filter cloud CVEs
+    SRV-->>Cache: list primitives
+    SRV-->>Cache: get_live_cisa_threats
+    SRV-->>Cache: get_prompt audit_prompt
+    Cache-->>UI: mcp_context dict
+    UI-->>U: Sidebar: CISA threats
+
+    U->>UI: Upload diagram PNG/JPG
+    U->>UI: Click Analyze
+    UI->>Graph: graph.invoke
+    Note over Graph: prepare_context node
+    Graph->>Graph: analyze_architecture node
+    Graph->>LLM: image + audit_prompt
+    Note over LLM: OpenAI/Azure/Anthropic/Google
+    LLM-->>Graph: Markdown report
+    Graph-->>UI: result report
+    UI-->>U: Security report
