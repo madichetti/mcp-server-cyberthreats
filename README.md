@@ -2,7 +2,7 @@
 <p align="center">
   <a href="https://python.org"><img src="https://img.shields.io/badge/python-3.14%2B-blue.svg" alt="Python 3.14+"/></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="MIT License"/></a>
-  <a href="https://github.com/your-org/cyberthreats/actions"><img src="https://img.shields.io/github/actions/workflow/status/your-org/cyberthreats/ci.yml?branch=main" alt="Build Status"/></a>
+  <a href="https://github.com/madichetti/mcp-server-cyberthreats/actions"><img src="https://img.shields.io/github/actions/workflow/status/madichetti/mcp-server-cyberthreats/ci.yml?branch=main" alt="Build Status"/></a>
 </p>
 
 # 🛡️ CyberThreats — AI Cloud Architecture Security Auditor
@@ -101,7 +101,7 @@ Security report in Streamlit UI
 ### Install
 
 ```bash
-git clone https://github.com/your-org/cyberthreats
+git clone https://github.com/madichetti/mcp-server-cyberthreats
 cd cyberthreats
 uv sync
 ```
