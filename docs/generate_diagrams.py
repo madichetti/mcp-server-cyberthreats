@@ -233,10 +233,10 @@ SVG_WIDTHS: dict[str, int] = {
 # Colour classes follow shadcn / Tailwind semantic tokens:
 #   actor     slate-900   👤 User
 #   ui        blue-700    Streamlit UI + cache helpers
-#   orch      indigo-600  LangGraph workflow nodes
+#   orch      indigo-600  Orchestrator (@traceable run_security_audit)
 #   mcpload   sky-700     MCP async/sync loader functions
 #   provider  purple-500  Vision LLM provider classes
-#   server    emerald-700 FastMCP server + service class
+#   server    emerald-700 FastMCP server + service class (stdio + HTTP)
 #   primitive teal-600    MCP primitives (tools/resources/prompts)
 #   external  amber-700   External APIs (CISA)
 #   llmapi    red-600     LLM API endpoints
@@ -256,10 +256,8 @@ flowchart LR
  subgraph app["app/ui.py"]
         UI["main()\\nStreamlit UI"]
         Cache["_load_mcp_context\\ncache_data"]
-        Res["_get_resources\\ncache_resource"]
-        Graph["build_audit_graph\\nLangGraph"]
-        N1["prepare_context"]
-        N2["analyze_architecture"]
+        Vis["_get_vision\\ncache_resource"]
+        Orch["run_security_audit\\n@traceable"]
         OAI["OpenAI"]
         AZ["Azure OpenAI"]
         ANT["Anthropic"]
@@ -271,20 +269,18 @@ flowchart LR
   end
     SRV --> SVC
     U(["👤 Security\\nEngineer"]) -- upload + analyze --> UI
-    UI --> Cache & Res
-    Cache -->|MCPClient stdio| SRV
-    Res --> Graph --> N1 --> N2
-    N2 --> OAI & AZ & ANT & GGL
+    UI --> Cache & Vis
+    Cache -->|MCPClient\\nHTTP or stdio| SRV
+    Vis --> Orch
+    Orch --> OAI & AZ & ANT & GGL
     SVC --> CISA[("CISA\\nKEV API")]
     Cache -. traceable .-> LS{{"LangSmith\\noptional"}}
-    Graph -. traces .-> LS
+    Orch -. traceable .-> LS
 
      UI:::ui
      Cache:::ui
-     Res:::ui
-     Graph:::orch
-     N1:::orch
-     N2:::orch
+     Vis:::ui
+     Orch:::orch
      OAI:::provider
      AZ:::provider
      ANT:::provider
@@ -310,14 +306,14 @@ sequenceDiagram
     participant Cache as _load_mcp_context
     participant SRV as FastMCP Server
     participant CISA as CISA KEV API
-    participant Graph as LangGraph
+    participant Orch as run_security_audit
     participant LLM as Vision LLM
 
     U->>UI: Open application
     UI->>Cache: _load_mcp_context()
     Note over Cache: st.cache_data TTL=900s
-    Cache->>SRV: MCPClient stdio
-    Note over SRV: create_mcp_server run stdio
+    Cache->>SRV: MCPClient (HTTP or stdio)
+    Note over SRV: create_mcp_server
     SRV->>CISA: GET vulnerabilities.json
     CISA-->>SRV: KEV JSON feed
     Note over SRV: filter cloud CVEs
@@ -325,17 +321,16 @@ sequenceDiagram
     SRV-->>Cache: get_live_cisa_threats
     SRV-->>Cache: get_prompt audit_prompt
     Cache-->>UI: mcp_context dict
-    UI-->>U: Sidebar: CISA threats
+    UI-->>U: Sidebar: CISA threats + transport label
 
     U->>UI: Upload diagram PNG/JPG
     U->>UI: Click Analyze
-    UI->>Graph: graph.invoke
-    Note over Graph: prepare_context node
-    Graph->>Graph: analyze_architecture node
-    Graph->>LLM: image + audit_prompt
+    UI->>Orch: run_security_audit()
+    Note over Orch: @traceable → LangSmith
+    Orch->>LLM: image + audit_prompt
     Note over LLM: OpenAI/Azure/Anthropic/Google
-    LLM-->>Graph: Markdown report
-    Graph-->>UI: result report
+    LLM-->>Orch: Markdown report
+    Orch-->>UI: Markdown report
     UI-->>U: Security report
 """,
 
@@ -355,22 +350,18 @@ graph TB
 
     ENTRY["streamlit run\\napp/ui.py"] --> Main
 
-    subgraph app["src/cyberthreats/app/ui.py"]
+    subgraph app["src/mcp_server_cyberthreats/app/ui.py"]
         Main["main()\\nStreamlit UI"]
-        GetRes["_get_resources\\ncache_resource"]
-
-        subgraph langgraph["LangGraph Workflow"]
-            N1["prepare_context"]
-            N2["analyze_architecture"]
-            N1 --> N2
-        end
+        GetVis["_get_vision\\ncache_resource"]
+        Orch["run_security_audit\\n@traceable"]
 
         subgraph mcploader["MCP Context Loader"]
             LoadCtx["_load_mcp_context\\ncache_data"]
             FetchSync["fetch_mcp_context\\nasyncio.run"]
-            FetchAsync["fetch_context_async\\n@traceable"]
+            FetchAsync["_fetch_mcp_context_async\\n@traceable"]
             MCPCli["MCPClient\\nfastmcp.Client"]
-            LoadCtx --> FetchSync --> FetchAsync --> MCPCli
+            Target["_mcp_target\\nHTTP or stdio"]
+            LoadCtx --> FetchSync --> FetchAsync --> Target --> MCPCli
         end
 
         subgraph providers["vision_providers"]
@@ -381,25 +372,26 @@ graph TB
         end
 
         Main --> LoadCtx
-        Main --> GetRes
-        GetRes --> langgraph
-        GetRes --> providers
-        N2 --> providers
+        Main --> GetVis
+        GetVis --> Orch
+        Orch --> providers
     end
 
-    subgraph mcp["src/cyberthreats/mcp/server.py"]
-        RunSrv["run_mcp_server\\ncreate_mcp_server"]
+    subgraph mcp["src/mcp_server_cyberthreats/mcp/server.py"]
+        RunStdio["run_mcp_server\\nstdio transport"]
+        RunHttp["run_mcp_server_http\\nHTTP transport"]
         SVC["CisaKevThreat\\nIntelService"]
         T1["get_live_cisa\\n_threats"]
         T2["get_cisa_feed\\n_metadata"]
         R1["cloud-keywords\\nresource"]
         R2["feed-info\\nresource"]
         P1["audit_prompt\\nprompt"]
-        RunSrv --> SVC
-        RunSrv -.-> T1 & T2 & R1 & R2 & P1
+        RunStdio & RunHttp --> SVC
+        RunStdio & RunHttp -.-> T1 & T2 & R1 & R2 & P1
     end
 
-    MCPCli -->|stdio subprocess| RunSrv
+    MCPCli -->|stdio subprocess| RunStdio
+    MCPCli -->|HTTP via MCP_SERVER_URL| RunHttp
     SVC -->|HTTP GET| CISA[("CISA KEV\\nJSON Feed")]
 
     OAI -->|API| OpenAIAPI["OpenAI API"]
@@ -408,13 +400,14 @@ graph TB
     GGL -->|API| GoogleAPI["Google AI API"]
 
     FetchAsync -. traceable .-> LS[/"LangSmith\\noptional"/]
+    Orch -. traceable .-> LS
 
     class ENTRY entry
-    class Main,LoadCtx,GetRes ui
-    class FetchSync,FetchAsync,MCPCli mcpload
-    class N1,N2 orch
+    class Main,LoadCtx,GetVis ui
+    class Orch orch
+    class FetchSync,FetchAsync,Target,MCPCli mcpload
     class OAI,AZ,ANT,GGL provider
-    class RunSrv,SVC server
+    class RunStdio,RunHttp,SVC server
     class T1,T2,R1,R2,P1 primitive
     class CISA external
     class OpenAIAPI,AzureAPI,AnthropicAPI,GoogleAPI llmapi

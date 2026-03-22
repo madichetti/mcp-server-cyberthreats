@@ -252,11 +252,25 @@ def run_mcp_server() -> None:
     """Create the MCP server and start it on stdio transport.
 
     Entry point for both direct execution and ``PythonStdioTransport``.
+    Used by VSCode and Claude Code Desktop via stdio MCP config.
     Communicates exclusively over stdin/stdout using the MCP protocol
     and exits when the client closes the connection.
     """
     server = create_mcp_server()
     server.run(transport="stdio")
+
+
+def run_mcp_server_http() -> None:
+    """Create the MCP server and start it on HTTP (streamable-http) transport.
+
+    Binds to ``MCP_HTTP_HOST:MCP_HTTP_PORT`` (defaults: ``localhost:8000``).
+    The MCP endpoint is available at ``http://<host>:<port>/mcp``.
+    Used by the Streamlit app when ``MCP_SERVER_URL`` is set in the environment.
+    """
+    host = os.environ.get("MCP_HTTP_HOST", "localhost")
+    port = int(os.environ.get("MCP_HTTP_PORT", "8000"))
+    server = create_mcp_server()
+    server.run(transport="streamable-http", host=host, port=port)
 
 
 # ---------------------------------------------------------------------------

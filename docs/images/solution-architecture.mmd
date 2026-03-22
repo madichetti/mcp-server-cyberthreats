@@ -9,10 +9,8 @@ flowchart LR
  subgraph app["app/ui.py"]
         UI["main()\nStreamlit UI"]
         Cache["_load_mcp_context\ncache_data"]
-        Res["_get_resources\ncache_resource"]
-        Graph["build_audit_graph\nLangGraph"]
-        N1["prepare_context"]
-        N2["analyze_architecture"]
+        Vis["_get_vision\ncache_resource"]
+        Orch["run_security_audit\n@traceable"]
         OAI["OpenAI"]
         AZ["Azure OpenAI"]
         ANT["Anthropic"]
@@ -24,20 +22,18 @@ flowchart LR
   end
     SRV --> SVC
     U(["👤 Security\nEngineer"]) -- upload + analyze --> UI
-    UI --> Cache & Res
-    Cache -->|MCPClient stdio| SRV
-    Res --> Graph --> N1 --> N2
-    N2 --> OAI & AZ & ANT & GGL
+    UI --> Cache & Vis
+    Cache -->|MCPClient\nHTTP or stdio| SRV
+    Vis --> Orch
+    Orch --> OAI & AZ & ANT & GGL
     SVC --> CISA[("CISA\nKEV API")]
     Cache -. traceable .-> LS{{"LangSmith\noptional"}}
-    Graph -. traces .-> LS
+    Orch -. traceable .-> LS
 
      UI:::ui
      Cache:::ui
-     Res:::ui
-     Graph:::orch
-     N1:::orch
-     N2:::orch
+     Vis:::ui
+     Orch:::orch
      OAI:::provider
      AZ:::provider
      ANT:::provider

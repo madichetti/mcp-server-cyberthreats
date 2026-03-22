@@ -13,22 +13,18 @@ graph TB
 
     ENTRY["streamlit run\napp/ui.py"] --> Main
 
-    subgraph app["src/cyberthreats/app/ui.py"]
+    subgraph app["src/mcp_server_cyberthreats/app/ui.py"]
         Main["main()\nStreamlit UI"]
-        GetRes["_get_resources\ncache_resource"]
-
-        subgraph langgraph["LangGraph Workflow"]
-            N1["prepare_context"]
-            N2["analyze_architecture"]
-            N1 --> N2
-        end
+        GetVis["_get_vision\ncache_resource"]
+        Orch["run_security_audit\n@traceable"]
 
         subgraph mcploader["MCP Context Loader"]
             LoadCtx["_load_mcp_context\ncache_data"]
             FetchSync["fetch_mcp_context\nasyncio.run"]
-            FetchAsync["fetch_context_async\n@traceable"]
+            FetchAsync["_fetch_mcp_context_async\n@traceable"]
             MCPCli["MCPClient\nfastmcp.Client"]
-            LoadCtx --> FetchSync --> FetchAsync --> MCPCli
+            Target["_mcp_target\nHTTP or stdio"]
+            LoadCtx --> FetchSync --> FetchAsync --> Target --> MCPCli
         end
 
         subgraph providers["vision_providers"]
@@ -39,25 +35,26 @@ graph TB
         end
 
         Main --> LoadCtx
-        Main --> GetRes
-        GetRes --> langgraph
-        GetRes --> providers
-        N2 --> providers
+        Main --> GetVis
+        GetVis --> Orch
+        Orch --> providers
     end
 
-    subgraph mcp["src/cyberthreats/mcp/server.py"]
-        RunSrv["run_mcp_server\ncreate_mcp_server"]
+    subgraph mcp["src/mcp_server_cyberthreats/mcp/server.py"]
+        RunStdio["run_mcp_server\nstdio transport"]
+        RunHttp["run_mcp_server_http\nHTTP transport"]
         SVC["CisaKevThreat\nIntelService"]
         T1["get_live_cisa\n_threats"]
         T2["get_cisa_feed\n_metadata"]
         R1["cloud-keywords\nresource"]
         R2["feed-info\nresource"]
         P1["audit_prompt\nprompt"]
-        RunSrv --> SVC
-        RunSrv -.-> T1 & T2 & R1 & R2 & P1
+        RunStdio & RunHttp --> SVC
+        RunStdio & RunHttp -.-> T1 & T2 & R1 & R2 & P1
     end
 
-    MCPCli -->|stdio subprocess| RunSrv
+    MCPCli -->|stdio subprocess| RunStdio
+    MCPCli -->|HTTP via MCP_SERVER_URL| RunHttp
     SVC -->|HTTP GET| CISA[("CISA KEV\nJSON Feed")]
 
     OAI -->|API| OpenAIAPI["OpenAI API"]
@@ -66,13 +63,14 @@ graph TB
     GGL -->|API| GoogleAPI["Google AI API"]
 
     FetchAsync -. traceable .-> LS[/"LangSmith\noptional"/]
+    Orch -. traceable .-> LS
 
     class ENTRY entry
-    class Main,LoadCtx,GetRes ui
-    class FetchSync,FetchAsync,MCPCli mcpload
-    class N1,N2 orch
+    class Main,LoadCtx,GetVis ui
+    class Orch orch
+    class FetchSync,FetchAsync,Target,MCPCli mcpload
     class OAI,AZ,ANT,GGL provider
-    class RunSrv,SVC server
+    class RunStdio,RunHttp,SVC server
     class T1,T2,R1,R2,P1 primitive
     class CISA external
     class OpenAIAPI,AzureAPI,AnthropicAPI,GoogleAPI llmapi

@@ -6,7 +6,7 @@ import json
 import os
 import warnings
 from pathlib import Path
-from typing import Any
+from typing import Any, Union
 
 # ---------------------------------------------------------------------------
 # Third-party imports
@@ -15,26 +15,18 @@ import streamlit as st
 from dotenv import load_dotenv
 from fastmcp import Client as MCPClient
 from langsmith import traceable
-from langgraph.graph import END, START, StateGraph
-from langgraph.runtime import Runtime
 from PIL import Image
 
 # ---------------------------------------------------------------------------
 # Local imports
 # ---------------------------------------------------------------------------
-from mcp_server_cyberthreats.utils import AuditContext, AuditState
-from mcp_server_cyberthreats.utils.vision_providers import VisionAnalyzerBase, create_vision_analyzer
+from mcp_server_cyberthreats.utils.vision_providers import create_vision_analyzer
 
 # ---------------------------------------------------------------------------
 # Environment setup
 # ---------------------------------------------------------------------------
 load_dotenv()
 
-warnings.filterwarnings(
-    "ignore",
-    message=r"langsmith\.wrappers\._openai_agents is deprecated.*",
-    category=DeprecationWarning,
-)
 warnings.filterwarnings(
     "ignore",
     message="Core Pydantic V1 functionality isn't compatible with Python 3.14 or greater.",
@@ -54,24 +46,29 @@ warnings.filterwarnings(
 _SERVER_PATH = Path(__file__).resolve().parents[1] / "mcp" / "server.py"
 _CISA_LIMIT = int(os.environ.get("CISA_THREAT_LIMIT", "8"))
 
+
+# ---------------------------------------------------------------------------
+# Transport selector
+# ---------------------------------------------------------------------------
+
+def _mcp_target() -> Union[str, Path]:
+    """Return MCP target — HTTP URL if ``MCP_SERVER_URL`` is set, else stdio path.
+
+    When ``MCP_SERVER_URL`` is present the Streamlit app connects to the
+    already-running HTTP MCP server (``run_mcp_server_http``).
+    Without it, FastMCP spawns a stdio subprocess from ``_SERVER_PATH``,
+    which is the default for local development and VSCode / Claude Desktop.
+    """
+    url = os.environ.get("MCP_SERVER_URL", "").strip()
+    return url if url else _SERVER_PATH
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 def _extract_text(payload: Any) -> str:
-    """Recursively extract a plain-text string from any MCP response payload.
-
-    MCP tools, resources, and prompts can return strings, bytes, lists,
-    dicts, or Pydantic-like objects. This function normalises all of those
-    shapes into a single UTF-8 string so the rest of the code always works
-    with plain text.
-
-    Args:
-        payload: Any value returned by an MCP client call.
-
-    Returns:
-        A plain-text string representation of the payload.
-    """
+    """Recursively extract a plain-text string from any MCP response payload."""
     if payload is None:
         return ""
     if isinstance(payload, str):
@@ -99,15 +96,20 @@ def _extract_text(payload: Any) -> str:
 # MCP context loader
 # ---------------------------------------------------------------------------
 
-@traceable(name="mcp_fetch_context")
-async def _fetch_mcp_context_async(server_path: Path, limit: int) -> dict:
-    """Connect to the FastMCP stdio server and return all threat-intelligence context.
+@traceable(
+    name="mcp_fetch_context",
+    tags=["mcp-server-cyberthreats", "threat-intel"],
+    metadata={"step": "context_fetch"},
+)
+async def _fetch_mcp_context_async(target: Union[str, Path], limit: int) -> dict:
+    """Connect to the MCP server (HTTP or stdio) and return all threat-intel context.
 
     Returns a dict with keys: ``tools``, ``resources``, ``prompts``,
-    ``threat_intel``, ``feed_info``, ``metadata``, and ``audit_prompt``.
+    ``threat_intel``, ``feed_info``, ``metadata``, ``audit_prompt``,
+    and ``transport`` (``"http"`` or ``"stdio"``).
     Decorated with ``@traceable`` so LangSmith captures this step automatically.
     """
-    async with MCPClient(server_path) as client:
+    async with MCPClient(target) as client:
         tools, resources, prompts = (
             await client.list_tools(),
             await client.list_resources(),
@@ -128,71 +130,49 @@ async def _fetch_mcp_context_async(server_path: Path, limit: int) -> dict:
         "feed_info": _extract_text(feed_info),
         "metadata": _extract_text(metadata),
         "audit_prompt": _extract_text(prompt),
+        "transport": "http" if isinstance(target, str) else "stdio",
     }
 
 
-def fetch_mcp_context(server_path: Path, limit: int) -> dict:
+def fetch_mcp_context(limit: int) -> dict:
     """Synchronous wrapper — runs the async MCP session in a new event loop."""
-    return asyncio.run(_fetch_mcp_context_async(server_path, limit))
+    return asyncio.run(_fetch_mcp_context_async(_mcp_target(), limit))
 
 
 # ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
 
-def prepare_context(state: AuditState) -> dict:
-    """Node 1 — fetch MCP threat-intelligence context (or reuse if already set)."""
-    threat_context = state.get("threat_context")
-    audit_prompt = state.get("audit_prompt", "").strip()
-    if not threat_context and not audit_prompt:
-        threat_context = fetch_mcp_context(_SERVER_PATH, _CISA_LIMIT)
-        audit_prompt = threat_context.get("audit_prompt", "")
-    return {"threat_context": threat_context, "audit_prompt": audit_prompt}
+@traceable(
+    name="run_security_audit",
+    tags=["mcp-server-cyberthreats", "security-audit"],
+    metadata={"workflow": "architecture_audit"},
+)
+def run_security_audit(image: Image.Image, audit_prompt: str, vision) -> str:
+    """Single-function orchestrator — replaces LangGraph StateGraph.
 
-
-def analyze_architecture(state: AuditState, runtime: Runtime[AuditContext]) -> dict:
-    """Node 2 — run vision-model analysis and produce the security report."""
-    image = state.get("image")
-    audit_prompt = state.get("audit_prompt", "")
-    if image is None:
-        raise ValueError("Architecture image is required.")
-    if not audit_prompt:
-        raise ValueError("Audit prompt is required.")
-    report = runtime.context.vision.analyze_architecture(image=image, audit_prompt=audit_prompt)
-    return {"report": report}
-
-
-def build_audit_graph():
-    wf = StateGraph(AuditState, context_schema=AuditContext)
-    wf.add_node(prepare_context)       # node name inferred: "prepare_context"
-    wf.add_node(analyze_architecture)  # node name inferred: "analyze_architecture"
-    wf.add_edge(START, "prepare_context")
-    wf.add_edge("prepare_context", "analyze_architecture")
-    wf.add_edge("analyze_architecture", END)
-    return wf.compile()
+    Calls the vision provider directly with the audit prompt built from
+    live CISA threat intel.  ``@traceable`` sends the full span to LangSmith
+    automatically when ``LANGSMITH_TRACING=true``.
+    """
+    return vision.analyze_architecture(image=image, audit_prompt=audit_prompt)
 
 
 # ---------------------------------------------------------------------------
 # Streamlit UI
 # ---------------------------------------------------------------------------
 
-
 @st.cache_resource
-def _get_resources() -> tuple:
-    """Build and cache the compiled audit graph, vision provider, and label.
-
-    Returns:
-        ``(compiled_graph, vision, provider_label)`` — reused for every Streamlit run.
-    """
+def _get_vision() -> tuple:
+    """Build and cache the vision provider. Reused for every Streamlit run."""
     vision = create_vision_analyzer()
-    graph = build_audit_graph()
-    return graph, vision, f"{vision.provider_name} / {vision.model_name}"
+    return vision, f"{vision.provider_name} / {vision.model_name}"
 
 
 @st.cache_data(ttl=int(os.environ.get("MCP_CACHE_TTL", "900")))
 def _load_mcp_context() -> dict:
     """Fetch threat-intelligence context via MCP, cached for ``MCP_CACHE_TTL`` seconds."""
-    return fetch_mcp_context(_SERVER_PATH, _CISA_LIMIT)
+    return fetch_mcp_context(_CISA_LIMIT)
 
 
 def main() -> None:
@@ -201,13 +181,18 @@ def main() -> None:
     Layout:
         - **Sidebar**: Live CISA KEV threat feed with a refresh button and
           an expandable MCP capabilities panel (tools, resources, prompts).
+          Shows whether MCP is connected via HTTP or stdio.
         - **Main area**: Architecture diagram uploader, analysis trigger
           button, and security report output.  Full execution traces are
           captured automatically in LangSmith via ``@traceable``.
 
-    Run directly with::
+    Transport:
+        Set ``MCP_SERVER_URL=http://localhost:8000/mcp`` to use the HTTP
+        MCP server.  Leave unset to use stdio (spawns a subprocess).
 
-        streamlit run src/mcp_server_cyberthreats/app/ui.py
+    Run with::
+
+        uv run python -m streamlit run src/mcp_server_cyberthreats/app/ui.py
     """
     st.set_page_config(page_title="CyberThreats — Security Reviewer", layout="wide")
     st.title("🛡️ CyberThreats — Architecture Security Reviewer (MCP Powered)")
@@ -220,8 +205,9 @@ def main() -> None:
         try:
             mcp_context = _load_mcp_context()
             audit_prompt = mcp_context["audit_prompt"]
+            transport_label = mcp_context.get("transport", "stdio")
             st.markdown(mcp_context["threat_intel"])
-            st.info("Data sourced via MCP stdio server (tools/resources/prompts).")
+            st.info(f"Data sourced via MCP **{transport_label}** transport.")
             with st.expander("MCP Capabilities"):
                 st.markdown("**Tools**")
                 st.markdown("\n".join(f"- {n}" for n in mcp_context["tools"]))
@@ -246,26 +232,21 @@ def main() -> None:
         if st.button("Analyze with MCP Intel", type="primary"):
             with st.spinner("Processing vision model and cross-referencing CISA KEV..."):
                 try:
-                    graph, vision, _ = _get_resources()
-                    result = graph.invoke(
-                        {"image": image, "audit_prompt": audit_prompt},
-                        config={
-                            "tags": ["mcp-server-cyberthreats", "security-audit", "langgraph"],
-                            "metadata": {"workflow": "architecture_audit"},
-                        },
-                        version="v2",
-                        context=AuditContext(vision=vision),
+                    vision, _ = _get_vision()
+                    report = run_security_audit(
+                        image=image,
+                        audit_prompt=audit_prompt,
+                        vision=vision,
                     )
                     st.markdown("### Security Analysis & Terraform Patch")
-                    st.markdown(result.value.get("report", ""))
+                    st.markdown(report)
                 except Exception as exc:
                     st.error(f"Analysis error: {exc}")
 
     st.divider()
-    _, _v, provider_label = _get_resources()
+    _, provider_label = _get_vision()
     st.caption(f"Integrated with CISA KEV API · {provider_label}")
 
 
 if __name__ == "__main__":
     main()
-
