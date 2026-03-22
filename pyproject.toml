@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mcp-server-cyberthreats"
-version = "0.1.1"
+version = "0.1.2"
 description = "MCP-powered cloud architecture security reviewer backed by live CISA threat intelligence"
 readme = "README.md"
 license = "MIT"
